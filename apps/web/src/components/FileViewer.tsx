@@ -15321,6 +15321,8 @@ function HtmlViewer({
     const exportContext = options?.context ?? null;
     captureFailureStageRef.current = null;
     const imageDeckSignal = deckExportSignalForContext(exportContext);
+    const fullPage = options?.wholeDeck === true && !imageDeckSignal;
+    const snapshotOptions = fullPage ? { full: true } : undefined;
     // The host compositor grabs on-screen pixels, so any transient hover chrome
     // over the preview leaks into the capture. The screenshot control's own
     // tooltip is already dismissed by TooltipLayer's pointerdown/click listener,
@@ -15394,7 +15396,8 @@ function HtmlViewer({
     // SVG-foreignObject bridge. Used on pure web (no host) or if the render
     // above is unavailable. Works for both srcDoc and URL-load previews.
     const visibleIframe = iframeRef.current ?? srcDocPreviewIframeRef.current;
-    const hostSnapshot = await captureHostIframeSnapshot(visibleIframe);
+    // A viewport capture would silently truncate a full-page image export.
+    const hostSnapshot = fullPage ? null : await captureHostIframeSnapshot(visibleIframe);
     if (hostSnapshot) return hostSnapshot;
 
     if (!useUrlLoadPreview) {
@@ -15405,14 +15408,14 @@ function HtmlViewer({
       }
       await waitForIframeLoadOrTimeout(activeIframe, 250);
       await waitForAnimationFrame();
-      return requestPreviewSnapshotWithRetry(activeIframe);
+      return requestPreviewSnapshotWithRetry(activeIframe, snapshotOptions);
     }
 
     const urlIframe = iframeRef.current ?? urlPreviewIframeRef.current;
     if (urlIframe) {
       await waitForIframeLoadOrTimeout(urlIframe, 250);
       await waitForAnimationFrame();
-      const urlSnapshot = await requestPreviewSnapshotWithRetry(urlIframe);
+      const urlSnapshot = await requestPreviewSnapshotWithRetry(urlIframe, snapshotOptions);
       if (urlSnapshot) return urlSnapshot;
     }
 
@@ -15423,7 +15426,7 @@ function HtmlViewer({
         captureFailureStageRef.current = 'NO_URL_IFRAME';
         return null;
       }
-      return requestPreviewSnapshotWithRetry(activeIframe);
+      return requestPreviewSnapshotWithRetry(activeIframe, snapshotOptions);
     }
 
     if (useLazySrcDocTransport && !srcDocShellReady) {
@@ -15435,7 +15438,7 @@ function HtmlViewer({
     const restoreVisibility = temporarilyExposeIframeForSnapshot(srcDocIframe);
     try {
       await waitForAnimationFrame();
-      return requestPreviewSnapshotWithRetry(srcDocIframe);
+      return requestPreviewSnapshotWithRetry(srcDocIframe, snapshotOptions);
     } finally {
       restoreVisibility();
     }
