@@ -1,4 +1,5 @@
 import type { ByokChatProviderConfig } from '@open-design/contracts';
+import { prepareByokReliabilityPlugin, readByokTokenProfile } from './byok-token-profile.js';
 
 export const BYOK_OPENCODE_AGENT_ID = 'byok-opencode';
 export const BYOK_OPENCODE_PROVIDER_ID = 'open-design-byok';
@@ -42,6 +43,7 @@ export function opencodeByokModelId(model: string | null | undefined): string | 
 export function buildOpenCodeByokProviderConfig(
   provider: ByokChatProviderConfig | null | undefined,
   model: string | null | undefined,
+  runtimeDataDir?: string,
 ): OpenCodeByokProviderConfig | null {
   if (!provider || typeof provider !== 'object') return null;
   const protocol = provider.protocol;
@@ -71,6 +73,7 @@ export function buildOpenCodeByokProviderConfig(
     provider.apiVersion,
     needsApiKey,
   );
+  const tokenProfile = readByokTokenProfile(runtimeDataDir, rawModel, baseUrl);
   const config = {
     provider: {
       [BYOK_OPENCODE_PROVIDER_ID]: {
@@ -94,11 +97,41 @@ export function buildOpenCodeByokProviderConfig(
     },
   };
 
+  const configExtras: Record<string, unknown> = {};
+  const envExtras: Record<string, string> = {};
+  if (tokenProfile && runtimeDataDir) {
+    if (providerEntry.npm !== '@ai-sdk/openai-compatible') {
+      throw new Error('BYOK token profile requires an OpenAI-compatible chat completions endpoint.');
+    }
+    const models: Record<string, unknown> = config.provider[BYOK_OPENCODE_PROVIDER_ID].models;
+    const mainModel = config.provider[BYOK_OPENCODE_PROVIDER_ID].models[rawModel]!;
+    const summaryModel = `${rawModel}-compaction`;
+    models[rawModel] = { ...mainModel, limit: {
+      context: tokenProfile.context,
+      input: tokenProfile.context - tokenProfile.maxOutput,
+      output: tokenProfile.maxOutput,
+    } };
+    models[summaryModel] = { ...mainModel, id: rawModel, name: `${rawModel} compaction`, limit: {
+      context: tokenProfile.context,
+      input: tokenProfile.context - tokenProfile.summaryOutput,
+      output: tokenProfile.summaryOutput,
+    } };
+    const plugin = prepareByokReliabilityPlugin(runtimeDataDir, tokenProfile);
+    configExtras.agent = { compaction: { model: `${BYOK_OPENCODE_PROVIDER_ID}/${summaryModel}` } };
+    configExtras.compaction = {
+      auto: true, prune: true, reserved: tokenProfile.headroom,
+      preserve_recent_tokens: tokenProfile.retainRecent, tail_turns: 2,
+    };
+    configExtras.plugin = [plugin.pluginUrl];
+    envExtras.XDG_CONFIG_HOME = plugin.configHome;
+    envExtras.OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX = String(tokenProfile.maxOutput);
+  }
+
   return {
     providerId: BYOK_OPENCODE_PROVIDER_ID,
     modelId,
-    env: needsApiKey ? { [BYOK_OPENCODE_API_KEY_ENV]: apiKey } : {},
-    config,
+    env: { ...(needsApiKey ? { [BYOK_OPENCODE_API_KEY_ENV]: apiKey } : {}), ...envExtras },
+    config: { ...config, ...configExtras },
   };
 }
 
