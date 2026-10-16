@@ -30,6 +30,10 @@ app.whenReady().then(async () => {
     ['explicit viewport', card, {width:1200,height:900}, 1200, 900],
     ['backdrop', page(cardCss + 'body{background-image:linear-gradient(blue,green)}', '<main>Card</main>'), {}, 1440, 1000],
     ['shadow', page(cardCss + 'main{box-shadow:0 0 40px black}', '<main>Card</main>'), {}, 1440, 1000],
+    ['outline', page(cardCss + 'main{background:blue;outline:20px solid red;outline-offset:10px}', '<main></main>'), {}, 1440, 1000],
+    ['body outline', page('body{width:800px;height:600px;margin:200px auto;outline:20px solid red;outline-offset:10px}main{width:800px;height:600px;background:blue}', '<main></main>'), {}, 1440, 1000],
+    ['outlined column', page('main{width:800px;height:1400px;margin:100px auto;background:blue;outline:20px solid red;outline-offset:10px}', '<main></main>'), {}, 1440, 1600],
+    ['outlined column body', page('body{width:800px;height:1400px;margin:100px auto;outline:20px solid red;outline-offset:10px}main{height:1400px;background:blue}', '<main></main>'), {}, 1440, 1600],
     ['generated content', page(cardCss + 'main::before{content:"outside";position:absolute;left:0}', '<main>Card</main>'), {}, 1440, 1000],
     ['body text', page('main{width:800px;height:600px;margin:auto;background:red}', 'Keep this text<main>Card</main>'), {}, 1440, 1000],
     ['tall column', page('main{width:800px;height:18000px;margin:auto;background:blue;position:relative}footer{position:absolute;bottom:0;width:100%;height:10px;background:red}', '<main><footer></footer></main>'), {}, 800, 18000],
@@ -42,6 +46,15 @@ app.whenReady().then(async () => {
     assert.deepEqual(image.getSize(), {width, height}, name);
     assert.equal(result.width, width, name);
     assert.equal(result.height, height, name);
+    if (name.includes('outline')) {
+      const bitmap = image.toBitmap();
+      let redPixels = 0;
+      for (let i = 0; i < bitmap.length; i += 4) {
+        if (bitmap[i] === 0 && bitmap[i + 1] === 0 && bitmap[i + 2] === 255 && bitmap[i + 3] === 255) redPixels++;
+      }
+      // Outer outline minus its offset gap; retain every authored red pixel.
+      assert.equal(redPixels, name.includes('column') ? 91200 : 59200, name + ': outline paint');
+    }
     if (name === 'tall column') {
       const bitmap = image.toBitmap();
       const offset = ((height - 2) * width + Math.floor(width / 2)) * 4;
@@ -59,7 +72,7 @@ app.whenReady().then(async () => {
     const args = process.platform === 'linux' ? ['-a', electron, ...electronArgs, '--ozone-platform=x11'] : electronArgs;
     const env: NodeJS.ProcessEnv = { PATH: process.env.PATH, HOME: root, XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR };
     const { stdout } = await promisify(execFile)(command, args, { env, timeout: 60000, maxBuffer: 1024 * 1024 });
-    expect(stdout).toContain('OD_PAGE_CAPTURE_OK:7');
+    expect(stdout).toContain('OD_PAGE_CAPTURE_OK:11');
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -1859,7 +1859,7 @@ function measurePageContentExtentInPage(): PageContentExtent | null {
   const doc = document.documentElement;
   const body = document.body;
   if (!doc || !body) return null;
-  // Border boxes cannot account for body text, shadows or generated content.
+  // Border boxes cannot account for body text, outlines, shadows or generated content.
   if (Array.from(body.childNodes).some((node) => node.nodeType === 3 && node.textContent?.trim())) return null;
   const scrollW = Math.ceil(Math.max(doc.scrollWidth, body.scrollWidth));
   const scrollH = Math.ceil(Math.max(doc.scrollHeight, body.scrollHeight));
@@ -1867,6 +1867,7 @@ function measurePageContentExtentInPage(): PageContentExtent | null {
   for (const el of [doc, body]) {
     const style = getComputedStyle(el);
     if (style.boxShadow !== "none" || style.filter !== "none" || style.textShadow !== "none") return null;
+    if (style.outlineStyle !== "none" && parseFloat(style.outlineWidth) > 0) return null;
     const bg = style.backgroundImage;
     if (bg && bg !== "none") backdropPaintsDesign = true;
     for (const pseudo of ["::before", "::after"]) {
@@ -1898,6 +1899,7 @@ function measurePageContentExtentInPage(): PageContentExtent | null {
     const style = getComputedStyle(el);
     if (style.visibility === "hidden") continue;
     if (style.boxShadow !== "none" || style.filter !== "none" || style.textShadow !== "none" || el.shadowRoot) return null;
+    if (style.outlineStyle !== "none" && parseFloat(style.outlineWidth) > 0) return null;
     for (const pseudo of ["::before", "::after"]) {
       const content = getComputedStyle(el, pseudo).content;
       if (content && content !== "none" && content !== "normal") return null;
@@ -1971,6 +1973,7 @@ function measurePageColumnInPage(): PageColumnExtent | null {
     const style = getComputedStyle(el);
     if (style.backgroundImage && style.backgroundImage !== "none") return null;
     if (style.boxShadow !== "none" || style.filter !== "none" || style.textShadow !== "none") return null;
+    if (style.outlineStyle !== "none" && parseFloat(style.outlineWidth) > 0) return null;
     for (const pseudo of ["::before", "::after"]) {
       const content = getComputedStyle(el, pseudo).content;
       if (content && content !== "none" && content !== "normal") return null;
@@ -1998,6 +2001,7 @@ function measurePageColumnInPage(): PageColumnExtent | null {
     const cs = getComputedStyle(el);
     if (cs.display === "none" || cs.visibility === "hidden") return;
     if (cs.boxShadow !== "none" || cs.filter !== "none" || cs.textShadow !== "none" || el.shadowRoot) { overflow = true; return; }
+    if (cs.outlineStyle !== "none" && parseFloat(cs.outlineWidth) > 0) { overflow = true; return; }
     for (const pseudo of ["::before", "::after"]) {
       const content = getComputedStyle(el, pseudo).content;
       if (content && content !== "none" && content !== "normal") { overflow = true; return; }

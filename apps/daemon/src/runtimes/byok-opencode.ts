@@ -124,7 +124,7 @@ export function buildOpenCodeByokProviderConfig(
     };
     configExtras.plugin = [plugin.pluginUrl];
     envExtras.XDG_CONFIG_HOME = plugin.configHome;
-    envExtras.OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX = String(tokenProfile.maxOutput);
+    envExtras.OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX = String(Math.max(tokenProfile.maxOutput, tokenProfile.summaryOutput));
   }
 
   return {

@@ -6,7 +6,7 @@ The policy applies to UI and CLI runs through the existing BYOK OpenCode launche
 
 ## Enable for one endpoint and model
 
-Create `byok-token-profile.json` inside the daemon's resolved data directory. Use the same model identifier and normalized base URL as the saved provider. Do not put API keys in this file. A trailing slash is ignored; different hosts or paths do not match.
+Create `byok-token-profile.json` using the [canonical daemon data-directory contract](../AGENTS.md#daemon-data-directory-contract). Use the same model identifier and normalized base URL as the saved provider. Do not put API keys in this file. A trailing slash is ignored; different hosts or paths do not match.
 
 ```json
 {
@@ -20,11 +20,11 @@ Create `byok-token-profile.json` inside the daemon's resolved data directory. Us
 }
 ```
 
-These numbers demonstrate the configuration, not a recommendation for every model. Set them to limits the endpoint actually supports. `maxOutput` budgets ordinary generation; `summaryOutput` budgets the separate compaction model alias. `headroom` reserves room before compaction; `retainRecent` controls the recent-history budget.
+These numbers demonstrate the configuration, not a recommendation for every model. Set them to limits the endpoint actually supports. `maxOutput` budgets ordinary generation; `summaryOutput` budgets the separate compaction model alias. The process-wide output ceiling accommodates the larger of these two budgets; each model alias retains its own output cap. `headroom` reserves room before compaction; `retainRecent` controls the recent-history budget.
 
 All budgets must be positive safe integers. The profile must leave a positive trigger budget (`context - maxOutput - headroom`), summary output must fit within headroom, and retained history plus summary output must fit below that trigger. Invalid matching budgets fail before launching a run. Unreadable or malformed JSON is reported rather than silently ignored.
 
-The daemon reads the file for each new run and writes a content-addressed standalone plugin under `<data-dir>/byok-opencode/`. The generated plugin contains no credentials or conversation. Existing credential environment variables remain the source of authentication. Remove the profile to disable the policy for subsequent runs; an already running process retains its launch configuration.
+The daemon reads the file for each new run and writes a content-addressed standalone plugin to daemon-managed storage governed by that contract. The generated plugin contains no credentials or conversation. Existing credential environment variables remain the source of authentication. Remove the profile to disable the policy for subsequent runs; an already running process retains its launch configuration.
 
 ## Behavior
 
@@ -39,7 +39,7 @@ No global timeout extension is included. A model that stops emitting data is sti
 
 ## Compatibility and verification
 
-Validated with OpenCode **1.18.18** using an isolated local HTTP fixture and temporary homes, without real provider credentials or user projects. The tests cover successful compaction, recovery from empty/truncated/tool-calling summaries, and explicit failure after two bad summaries. They also export the resulting session to check original messages and accepted checkpoints.
+Validated with OpenCode **1.18.18** using an isolated local HTTP fixture and temporary homes, without real provider credentials or user projects. The tests cover successful compaction, recovery from empty/truncated/tool-calling summaries, and explicit failure after two bad summaries. They verify a larger summary budget (16,384 tokens) alongside a smaller generation cap (1,024 tokens) in actual outgoing requests. They also export the resulting session to check original messages and accepted checkpoints.
 
 The host's installed OpenCode **2.0.29** rejects this checkout's existing `run --dir` launch syntax before reaching the plugin. This integration does not migrate the launcher to OpenCode v2. Use a runtime compatible with the current OpenDesign launcher; do not interpret the unit tests as v2 support.
 

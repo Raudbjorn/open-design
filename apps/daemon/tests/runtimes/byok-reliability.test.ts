@@ -23,6 +23,15 @@ function build(root: string, model = profile.model, baseUrl = profile.baseUrl) {
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
 describe('BYOK long reasoning profile', () => {
+  it('allows a larger summary budget without raising the generation model limit', () => {
+    const result = build(setup({ maxOutput: 1024 }));
+    expect(result.env.OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX).toBe('16384');
+    expect(result.config).toMatchObject({ provider: { 'open-design-byok': { models: {
+      'local-reasoner': { limit: { output: 1024 } },
+      'local-reasoner-compaction': { limit: { output: 16384 } },
+    } } } });
+  });
+
   it('budgets generation and compaction independently and installs its bundled plugin', () => {
     const root = setup();
     const result = build(root);

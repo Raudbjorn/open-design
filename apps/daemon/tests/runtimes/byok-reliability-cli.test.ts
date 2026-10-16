@@ -13,9 +13,10 @@ import { buildOpenCodeByokProviderConfig } from '../../src/runtimes/byok-opencod
 
 const binary = process.env.OD_TEST_OPENCODE_BIN;
 describe.skipIf(!binary)('BYOK reliability through the OpenCode CLI', () => {
-  it.each(['valid', 'empty-once', 'truncated-once', 'tool-once', 'empty-always'])(
+  it.each(['valid', 'empty-once', 'truncated-once', 'tool-once', 'empty-always', 'larger-summary-budget'])(
     '%s summary preserves normal generation and history safety', async (scenario) => {
       const root = mkdtempSync(path.join(os.tmpdir(), 'od-byok-cli-'));
+      const maxOutput = scenario === 'larger-summary-budget' ? 1024 : 65536;
       const seen: { limit: number; summary: boolean; title: boolean; tools: number; choice: unknown; thinking: unknown; marker: unknown }[] = [];
       let main = 0, summaries = 0;
       const server = createServer(async (request, response) => {
@@ -25,7 +26,8 @@ describe.skipIf(!binary)('BYOK reliability through the OpenCode CLI', () => {
         const body = JSON.parse(raw);
         const limit = body.max_tokens ?? body.max_completion_tokens;
         const title = JSON.stringify(body.messages).includes('title generator');
-        const summary = limit === 16384;
+        // Identify compaction independently of the limit being verified.
+        const summary = body.tool_choice === 'none';
         if (summary) summaries++; else if (!title) main++;
         seen.push({ limit, title, summary, tools: body.tools?.length ?? 0,
           choice: body.tool_choice, thinking: body.chat_template_kwargs?.enable_thinking,
@@ -40,8 +42,9 @@ describe.skipIf(!binary)('BYOK reliability through the OpenCode CLI', () => {
         const tools = summary && scenario === 'tool-once' && summaries === 1;
         const content = summary ? 'Objective: finish this local test. Completed: first normal generation. Working files are unchanged. Remaining: resume the normal tool-enabled task and reply OK. No external services, real API keys, or user projects are involved.' : 'OK';
         emit(tools ? { tool_calls: [{ index: 0, id: 'bad-summary-tool', type: 'function', function: { name: 'todowrite', arguments: '{"todos":[]}' } }] } : empty ? { reasoning_content: 'No visible checkpoint' } : { content });
+        // Cross the compaction trigger even when generation reserves only 1,024 tokens.
         emit({}, tools ? 'tool_calls' : empty || truncated ? 'length' : 'stop', !summary && !title && main === 1
-          ? { prompt_tokens: 50000, completion_tokens: 1000, total_tokens: 51000 }
+          ? { prompt_tokens: 120000, completion_tokens: 1000, total_tokens: 121000 }
           : { prompt_tokens: 1000, completion_tokens: 20, total_tokens: 1020 });
         response.end('data: [DONE]\n\n');
       });
@@ -51,7 +54,7 @@ describe.skipIf(!binary)('BYOK reliability through the OpenCode CLI', () => {
         if (!address || typeof address === 'string') throw new Error('No test port');
         const baseUrl = `http://127.0.0.1:${address.port}/v1`;
         writeFileSync(path.join(root, 'byok-token-profile.json'), JSON.stringify({
-          baseUrl, model: 'local-reasoner', context: 131072, maxOutput: 65536,
+          baseUrl, model: 'local-reasoner', context: 131072, maxOutput,
           summaryOutput: 16384, headroom: 20000, retainRecent: 8192,
         }));
         const provider = buildOpenCodeByokProviderConfig({ protocol: 'openai', apiKey: 'mock-key', baseUrl }, 'local-reasoner', root)!;
@@ -77,7 +80,7 @@ describe.skipIf(!binary)('BYOK reliability through the OpenCode CLI', () => {
         } else {
           expect(code, output.slice(-1600)).toBe(0);
           expect(main).toBeGreaterThanOrEqual(2);
-          expect(summaries).toBe(scenario === 'valid' ? 1 : 2);
+          expect(summaries).toBe(scenario === 'valid' || scenario === 'larger-summary-budget' ? 1 : 2);
         }
         const sessionId = output.match(/"sessionID":"(ses_[^"]+)"/)?.[1];
         expect(sessionId).toBeTruthy();
@@ -101,9 +104,10 @@ describe.skipIf(!binary)('BYOK reliability through the OpenCode CLI', () => {
         for (const request of seen.filter((item) => !item.title)) {
           expect(request.marker).toBeUndefined();
           if (request.summary) {
+            expect(request.limit).toBe(16384);
             expect(request.choice).toBe('none'); expect(request.tools).toBe(0); expect(request.thinking).toBe(false);
           } else {
-            expect(request.limit).toBe(65536); expect(request.tools).toBeGreaterThan(0);
+            expect(request.limit).toBe(maxOutput); expect(request.tools).toBeGreaterThan(0);
             expect(request.choice).not.toBe('none'); expect(request.thinking).toBeUndefined();
           }
         }
