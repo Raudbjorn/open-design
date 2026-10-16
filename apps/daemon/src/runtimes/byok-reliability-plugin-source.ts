@@ -126,6 +126,9 @@ export const SummaryGuard = async ({ directory } = {}) => ({
       const raw = init?.body ?? (input instanceof Request ? await input.clone().text() : undefined);
       if (typeof raw !== 'string') throw new Error('Summary guard expected a JSON request body');
       const body = JSON.parse(raw);
+      if (!Array.isArray(body?.messages)) {
+        return new Response(JSON.stringify({ error: { type: 'invalid_request_error', code: 'invalid_compaction_request', message: 'Compaction request must contain a messages array.' } }), { status: 400, headers: { 'content-type': 'application/json' } });
+      }
       body.tool_choice = 'none';
       delete body.tools;
       delete body.reasoning_effort;

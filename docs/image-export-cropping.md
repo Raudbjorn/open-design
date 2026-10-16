@@ -22,8 +22,7 @@ This is not a general DOM-to-pixel paint-bounds solver. Some designs deliberatel
 The focused geometry tests cover cards, body padding, viewport-filling content, gradients, scrolling/overflow, fractional bounds, invalid numbers and long-column eligibility. The real Electron test renders seven synthetic documents under Linux/Xvfb, including explicit dimensions and exclusions for shadows, pseudo-elements and body text. Its 18,000-pixel-tall fixture checks the final red pixels, proving that the page tail was retained beyond 16,384 pixels rather than repeated from the blue page start.
 
 ```sh
-pnpm --filter @open-design/desktop build
-pnpm --filter @open-design/desktop exec vitest run -c vitest.config.ts \
+pnpm --filter @open-design/desktop test \
   tests/main/page-capture-crop.test.ts \
   tests/main/page-export-geometry.test.ts \
   tests/main/page-capture-render.test.ts \
@@ -33,7 +32,7 @@ pnpm --filter @open-design/web exec vitest run \
   tests/runtime/exports.test.ts
 ```
 
-The native fixture uses an isolated Electron profile, software rendering and device scale 1. Existing geometry tests cover fractional scaling mathematically. These checks do not certify the Arc GPU, interactive Wayland rendering, every font/resource combination, all scroll animation libraries or arbitrary generated designs.
+The package test command builds the desktop entrypoints before running Vitest, so a separate desktop build is not required after the standard workspace install. The native fixture uses an isolated Electron profile, software rendering and device scale 1. Existing geometry tests cover fractional scaling mathematically. These checks do not certify the Arc GPU, interactive Wayland rendering, every font/resource combination, all scroll animation libraries or arbitrary generated designs.
 
 ## Provenance
 

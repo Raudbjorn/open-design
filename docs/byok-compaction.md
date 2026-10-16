@@ -32,6 +32,7 @@ The daemon reads the file for each new run and writes a content-addressed standa
 - Compaction disables tool calls and requests a plain-text checkpoint. The full response is withheld until validated, with a 4 MiB response limit.
 - Acceptance requires a completed SSE stream, a `stop` finish reason, at least 100 visible characters, no tool calls, and no `<think>` markup. These are structural checks; they cannot prove that the summary retained every important fact.
 - One invalid summary triggers one corrective retry. Two invalid summaries produce a non-retryable `invalid_compaction_summary` error instead of accepting an empty checkpoint. Provider HTTP errors and interrupted streams propagate without the extra summary retry.
+- A summary request without a `messages` array fails with `invalid_compaction_request` (HTTP 400) before contacting the provider.
 - The checkpoint prompt preserves the objective, constraints, actual written files, remaining work, next action and any on-disk checklist. It distinguishes completed work from plans.
 
 No global timeout extension is included. A model that stops emitting data is still subject to the existing run timeout policy.

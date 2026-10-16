@@ -23,6 +23,15 @@ async function setup(transport: typeof fetch, agent = 'build', providerID = 'ope
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 
 describe('standalone BYOK reliability plugin', () => {
+  it.each([{}, null, { messages: 'invalid' }, { messages: {} }])('rejects a summary request without a messages array: %j', async (body) => {
+    const transport = vi.fn<typeof fetch>(async () => response(wire('')));
+    const plugin = await setup(transport, 'compaction');
+    const result = await plugin.fetch('http://localhost/mock', { headers: plugin.headers, body: JSON.stringify(body) });
+    expect(result.status).toBe(400);
+    expect(await result.json()).toMatchObject({ error: { code: 'invalid_compaction_request' } });
+    expect(transport).not.toHaveBeenCalled();
+  });
+
   it('relays real progress beyond the silence limit, preserves bytes and propagates cancellation', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(0);
