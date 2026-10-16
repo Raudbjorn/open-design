@@ -769,7 +769,7 @@ process.stdin.on('end', () => {
     );
   });
 
-  it('passes BYOK provider config to the daemon-backed OpenCode runtime', async () => {
+  it.each([false, true])('passes BYOK provider config to the daemon-backed OpenCode runtime (compaction profile: %s)', async (guarded) => {
     if (!process.env.OD_DATA_DIR) {
       throw new Error('OD_DATA_DIR is required for BYOK OpenCode config tests');
     }
@@ -788,9 +788,17 @@ process.stdin.on('end', () => {
     });
     expect(createProjectResponse.ok).toBe(true);
 
-    await withFakeAgent(
-      'opencode',
-      `
+    const profilePath = join(process.env.OD_DATA_DIR, 'byok-token-profile.json');
+    if (guarded) {
+      await fsp.writeFile(profilePath, JSON.stringify({
+        model: 'deepseek-v4-flash', baseUrl: 'https://api.senseaudio.cn',
+        context: 131072, maxOutput: 65536, summaryOutput: 16384, headroom: 20000, retainRecent: 8192,
+      }));
+    }
+    try {
+      await withFakeAgent(
+        'opencode',
+        `
 const fs = require('node:fs');
 process.stdin.resume();
 process.stdin.on('end', () => {
@@ -802,65 +810,79 @@ process.stdin.on('end', () => {
   console.log(JSON.stringify({ type: 'step_finish', part: { tokens: { input: 1, output: 1 } } }));
   process.exit(0);
 });
-`,
-      async () => {
-        const response = await fetch(`${baseUrl}/api/chat`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            agentId: 'byok-opencode',
-            projectId,
-            message: 'hello',
-            model: 'deepseek-v4-flash',
-            byokProvider: {
-              protocol: 'senseaudio',
-              apiKey: 'sk-test-byok',
-              baseUrl: 'https://api.senseaudio.cn',
+  `,
+        async () => {
+          const response = await fetch(`${baseUrl}/api/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              agentId: 'byok-opencode',
+              projectId,
+              message: 'hello',
               model: 'deepseek-v4-flash',
-              requiresApiKey: true,
-            },
-          }),
-        });
-        const body = await response.text();
-        expect(response.ok).toBe(true);
-        expect(body).toContain('byok-opencode-ok');
+              byokProvider: {
+                protocol: 'senseaudio',
+                apiKey: 'sk-test-byok',
+                baseUrl: 'https://api.senseaudio.cn',
+                model: 'deepseek-v4-flash',
+                requiresApiKey: true,
+              },
+            }),
+          });
+          const body = await response.text();
+          expect(response.ok).toBe(true);
+          expect(body).toContain('byok-opencode-ok');
 
-        expect(await fsp.readFile(keyFile, 'utf8')).toBe('sk-test-byok');
-        expect(JSON.parse(await fsp.readFile(argsFile, 'utf8'))).toEqual([
-          'run',
-          '--format',
-          'json',
-          '--dir',
-          expect.stringContaining(projectId),
-          '-m',
-          'open-design-byok/deepseek-v4-flash',
-        ]);
-        const parsed = JSON.parse(await fsp.readFile(envFile, 'utf8')) as {
-          provider?: Record<string, {
-            npm?: string;
-            options?: Record<string, unknown>;
-            models?: Record<string, unknown>;
-          }>;
-        };
-        const provider = parsed.provider?.['open-design-byok'];
-        expect(provider).toMatchObject({
-          npm: '@ai-sdk/openai-compatible',
-          options: {
-            baseURL: 'https://api.senseaudio.cn',
-            apiKey: '{env:OPEN_DESIGN_BYOK_API_KEY}',
-          },
-        });
-        expect(provider?.models?.['deepseek-v4-flash']).toEqual({
-          name: 'deepseek-v4-flash',
-          modalities: { input: ['text', 'image'], output: ['text'] },
-          limit: {
-            context: 128_000,
-            output: 16_384,
-          },
-        });
-        expect(JSON.stringify(parsed)).not.toContain('sk-test-byok');
-      },
-    );
+          expect(await fsp.readFile(keyFile, 'utf8')).toBe('sk-test-byok');
+          expect(JSON.parse(await fsp.readFile(argsFile, 'utf8'))).toEqual([
+            'run',
+            '--format',
+            'json',
+            '--dir',
+            expect.stringContaining(projectId),
+            '-m',
+            'open-design-byok/deepseek-v4-flash',
+          ]);
+          const parsed = JSON.parse(await fsp.readFile(envFile, 'utf8')) as {
+            plugin?: string[];
+            agent?: { compaction?: { model?: string } };
+            provider?: Record<string, {
+              npm?: string;
+              options?: Record<string, unknown>;
+              models?: Record<string, unknown>;
+            }>;
+          };
+          const provider = parsed.provider?.['open-design-byok'];
+          expect(provider).toMatchObject({
+            npm: '@ai-sdk/openai-compatible',
+            options: {
+              baseURL: 'https://api.senseaudio.cn',
+              apiKey: '{env:OPEN_DESIGN_BYOK_API_KEY}',
+            },
+          });
+          expect(provider?.models?.['deepseek-v4-flash']).toEqual({
+            name: 'deepseek-v4-flash',
+            modalities: { input: ['text', 'image'], output: ['text'] },
+            limit: guarded
+              ? { context: 131072, input: 65536, output: 65536 }
+              : { context: 128_000, output: 16_384 },
+          });
+          expect(JSON.stringify(parsed)).not.toContain('sk-test-byok');
+          if (guarded) {
+            expect(parsed.agent?.compaction?.model).toBe('open-design-byok/deepseek-v4-flash-compaction');
+            expect(parsed.plugin).toHaveLength(1);
+            const pluginUrl = new URL(parsed.plugin![0]!);
+            expect(pluginUrl.protocol).toBe('file:');
+            expect(pluginUrl.pathname.startsWith(`${process.env.OD_DATA_DIR}/`)).toBe(true);
+            expect(await fsp.readFile(pluginUrl, 'utf8')).toContain('invalid_compaction_summary');
+          } else {
+            expect(parsed.plugin).toBeUndefined();
+          }
+        },
+      );
+    } finally {
+      if (guarded) await fsp.rm(profilePath, { force: true });
+    }
   });
 
   it('passes keyless BYOK provider config without auth fields to OpenCode', async () => {

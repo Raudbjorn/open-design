@@ -18,8 +18,8 @@ const {
   downloadImageDataUrlMock: vi.fn(),
   exportProjectImageDataUrlMock: vi.fn(),
   imageDataUrlToBlobMock: vi.fn(),
-  // Default: no desktop host, so existing tests exercise the host-snapshot
-  // fallback path exactly as before. The runtime-deck test flips this on.
+  // Without a desktop host, image exports must request the full iframe document;
+  // viewport capture remains reserved for screenshot-to-chat.
   isOpenDesignHostAvailableMock: vi.fn(() => false),
   prepareImageExportTargetMock: vi.fn(),
   requestPreviewSnapshotMock: vi.fn(),
@@ -139,8 +139,8 @@ describe('FileViewer image export', () => {
     });
   });
 
-  it('waits for the download menu to close before capturing host pixels', async () => {
-    captureHostIframeSnapshotMock.mockImplementationOnce(async () => {
+  it('waits for the download menu to close before capturing the full page', async () => {
+    requestPreviewSnapshotMock.mockImplementationOnce(async () => {
       expect(screen.queryByRole('menu')).toBeNull();
       return {
         dataUrl: 'data:image/png;base64,host',
@@ -163,7 +163,8 @@ describe('FileViewer image export', () => {
     expect(await screen.findByRole('dialog', { name: /export as image/i })).toBeTruthy();
     await clickSave();
     await waitFor(() => {
-      expect(captureHostIframeSnapshotMock).toHaveBeenCalledTimes(1);
+      expect(captureHostIframeSnapshotMock).not.toHaveBeenCalled();
+      expect(requestPreviewSnapshotMock).toHaveBeenCalledTimes(1);
       expect(imageDataUrlToBlobMock).toHaveBeenCalledWith('data:image/png;base64,host', 'png');
     });
   });
@@ -195,7 +196,7 @@ describe('FileViewer image export', () => {
     await clickSave();
 
     await waitFor(() => {
-      expect(requestPreviewSnapshotMock).toHaveBeenCalledWith(activeFrame, 1500, undefined);
+      expect(requestPreviewSnapshotMock).toHaveBeenCalledWith(activeFrame, 1500, { full: true });
       expect(imageDataUrlToBlobMock).toHaveBeenCalledWith('data:image/png;base64,ok', 'jpeg');
       expect(prepareImageExportTargetMock).toHaveBeenCalledWith('workspace', 'jpeg', { useNativePicker: false });
     });
@@ -246,8 +247,8 @@ describe('FileViewer image export', () => {
     await clickSave();
 
     await waitFor(() => {
-      expect(requestPreviewSnapshotMock).toHaveBeenCalledWith(srcDocFrame, 1500, undefined);
-      expect(requestPreviewSnapshotMock).toHaveBeenCalledWith(srcDocFrame, 3000, undefined);
+      expect(requestPreviewSnapshotMock).toHaveBeenCalledWith(srcDocFrame, 1500, { full: true });
+      expect(requestPreviewSnapshotMock).toHaveBeenCalledWith(srcDocFrame, 3000, { full: true });
       expect(imageDataUrlToBlobMock).toHaveBeenCalledWith('data:image/png;base64,recovered', 'png');
     }, { timeout: 4000 });
   });
@@ -271,10 +272,10 @@ describe('FileViewer image export', () => {
     await clickSave();
 
     await waitFor(() => {
-      expect(requestPreviewSnapshotMock).toHaveBeenCalledWith(activeFrame, 1500, undefined);
+      expect(requestPreviewSnapshotMock).toHaveBeenCalledWith(activeFrame, 1500, { full: true });
       expect(imageDataUrlToBlobMock).toHaveBeenCalledWith('data:image/png;base64,visible', 'png');
     });
-    expect(requestPreviewSnapshotMock).not.toHaveBeenCalledWith(srcDocFrame, 1500, undefined);
+    expect(requestPreviewSnapshotMock).not.toHaveBeenCalledWith(srcDocFrame, 1500, { full: true });
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
